@@ -149,7 +149,7 @@ with tab1:
 
         with col2:
             elemento = st.selectbox("Elemento o Dispositivo *", [
-                "PDI (Pantalla Digital Interactiva",
+                "PDI (Pantalla Digital Interactiva)",
                 "Ordenador de Aula (Sobremesa)",
                 "Portátil del Docente",
                 "Conexión Wi-Fi / Red Cable",
