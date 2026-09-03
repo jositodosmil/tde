@@ -140,17 +140,16 @@ with tab1:
         with col1:
             tutor = st.text_input("Nombre y Apellidos del Tutor/a *", placeholder="Ej. María García")
             edificio = st.selectbox("Edificio / Etapa *", [
-                "Infantil", "Primaria - Edificio A", "Primaria - Edificio B", "Especiales / Administración"
+                "Infantil - Primaria", "Equipo Directivo - Administración"
             ])
             aula = st.selectbox("Aula / Espacio *", [
-                "3 años A", "3 años B", "4 años A", "4 años B", "5 años A", "5 años B",
-                "1ºA", "1ºB", "2ºA", "2ºB", "3ºA", "3ºB", "4ºA", "4ºB", "5ºA", "5ºB", "6ºA", "6ºB",
-                "Aula de Informática", "Sala de Profesorado", "Biblioteca", "Gimnasio/Salón de Actos", "Despacho/Secretaría"
+                "3 años", "4 años", "5 años ",
+                "1º", "2º", "3º", "4º", "5º", "6ºA", "6ºB", "Aula PT", "Aula ZTS", "Aula STEAM", "Sala Profesores", "Biblioteca"
             ])
 
         with col2:
             elemento = st.selectbox("Elemento o Dispositivo *", [
-                "PDI / Panel Interactivo / Proyector",
+                "PDI (Pantalla Digital Interactiva",
                 "Ordenador de Aula (Sobremesa)",
                 "Portátil del Docente",
                 "Conexión Wi-Fi / Red Cable",
