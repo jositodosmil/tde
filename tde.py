@@ -45,13 +45,11 @@ def guardar_incidencia_supabase(tutor, edificio, aula, elemento, tipo, prioridad
         respuesta = supabase.table("incidencias").insert(datos).execute()
         if respuesta.data:
             return respuesta.data[0]["id"]
-        else:
-            st.error("❌ La base de datos no devolvió respuesta al guardar.")
-            return None
-    except Exception as e:
-        st.error(f"❌ Error al conectar con Supabase: {e}")
         return None
-
+    except Exception as e:
+        st.error(f"⚠️ Error de conexión con Supabase: {e}")
+        return None
+        
 def cargar_incidencias_supabase():
     """Carga todas las incidencias de Supabase en un DataFrame de Pandas."""
     try:
