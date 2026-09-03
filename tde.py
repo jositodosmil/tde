@@ -1,9 +1,8 @@
 import datetime
-import os
-import sqlite3
 import pandas as pd
 import requests
 import streamlit as st
+from supabase import create_client, Client
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -12,15 +11,26 @@ st.set_page_config(
     layout="centered"
 )
 
-DB_FILE = "incidencias.db"
+# --- CONEXIÓN A SUPABASE ---
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+
+@st.cache_resource
+def init_supabase() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+supabase = init_supabase()
 
 # --- CONFIGURACIÓN DE TELEGRAM ---
-# Lee de secretos o usa los valores directamente si estás en local
-TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "8767332293:AAHAtApyDSXzJl9RiecSjYuHPHNTCxLS29w")
-TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID", "Tde_Carmen_bot")
+TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID", "")
 
 def enviar_notificacion_telegram(incidencia_id, tutor, aula, elemento, prioridad, descripcion):
     """Envía un mensaje instantáneo de alerta al móvil del coordinador TDE."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        st.warning("⚠️ Las credenciales de Telegram no están configuradas correctamente en los secretos.")
+        return
+
     mensaje = (
         f"🚨 *NUEVA INCIDENCIA TDE #{incidencia_id}*\n\n"
         f"👤 *Docente:* {tutor}\n"
@@ -32,65 +42,42 @@ def enviar_notificacion_telegram(incidencia_id, tutor, aula, elemento, prioridad
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
     try:
-        requests.post(url, json=payload, timeout=5)
+        r = requests.post(url, json=payload, timeout=5)
+        res_json = r.json()
+        if not res_json.get("ok"):
+            st.error(f"❌ Telegram rechazó el mensaje: {res_json.get('description')}")
     except Exception as e:
-        st.warning(f"⚠️ Incidencia guardada, pero falló la alerta de Telegram: {e}")
+        st.error(f"⚠️ Fallo de red al contactar con Telegram: {e}")
 
-# --- GESTIÓN DE BASE DE DATOS SQLITE ---
-def init_db():
-    """Crea la tabla de base de datos si no existe."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS incidencias (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_hora TEXT,
-            tutor TEXT,
-            edificio TEXT,
-            aula TEXT,
-            elemento TEXT,
-            tipo TEXT,
-            prioridad TEXT,
-            descripcion TEXT,
-            estado TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-def guardar_incidencia_sqlite(tutor, edificio, aula, elemento, tipo, prioridad, descripcion):
-    """Inserta un nuevo registro en SQLite y retorna el ID asignado."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
+# --- FUNCIONES DE BASE DE DATOS (SUPABASE) ---
+def guardar_incidencia_supabase(tutor, edificio, aula, elemento, tipo, prioridad, descripcion):
+    """Inserta una nueva incidencia en Supabase y retorna el ID asignado."""
     fecha_actual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     
-    cursor.execute('''
-        INSERT INTO incidencias (fecha_hora, tutor, edificio, aula, elemento, tipo, prioridad, descripcion, estado)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente')
-    ''', (fecha_actual, tutor, edificio, aula, elemento, tipo, prioridad, descripcion))
+    datos = {
+        "fecha_hora": fecha_actual,
+        "tutor": tutor,
+        "edificio": edificio,
+        "aula": aula,
+        "elemento": elemento,
+        "tipo": tipo,
+        "prioridad": prioridad,
+        "descripcion": descripcion,
+        "estado": "Pendiente"
+    }
     
-    nuevo_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+    respuesta = supabase.table("incidencias").insert(datos).execute()
+    nuevo_id = respuesta.data[0]["id"]
     return nuevo_id
 
-def cargar_incidencias_sqlite():
-    """Carga todas las incidencias guardadas en un dataframe de Pandas."""
-    conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT * FROM incidencias ORDER BY id DESC", conn)
-    conn.close()
-    return df
+def cargar_incidencias_supabase():
+    """Carga todas las incidencias de Supabase en un DataFrame de Pandas."""
+    respuesta = supabase.table("incidencias").select("*").order("id", desc=True).execute()
+    return pd.DataFrame(respuesta.data)
 
 def actualizar_estado_incidencia(incidencia_id, nuevo_estado):
-    """Permite al coordinador cambiar el estado de la incidencia."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE incidencias SET estado = ? WHERE id = ?", (nuevo_estado, incidencia_id))
-    conn.commit()
-    conn.close()
-
-# Inicializar la base de datos al arrancar
-init_db()
+    """Actualiza el estado de una incidencia en Supabase."""
+    supabase.table("incidencias").update({"estado": nuevo_estado}).eq("id", incidencia_id).execute()
 
 # --- INTERFAZ DE USUARIO ---
 st.title("💻 Centro CEIP - Incidencias TDE")
@@ -153,8 +140,8 @@ with tab1:
             if not tutor or not descripcion:
                 st.error("⚠️ Por favor, rellena al menos tu nombre y la descripción del problema.")
             else:
-                # 1. Guardar en la base de datos SQLite
-                res_id = guardar_incidencia_sqlite(tutor, edificio, aula, elemento, tipo, prioridad, descripcion)
+                # 1. Guardar en Supabase
+                res_id = guardar_incidencia_supabase(tutor, edificio, aula, elemento, tipo, prioridad, descripcion)
                 
                 # 2. Notificar por Telegram
                 enviar_notificacion_telegram(res_id, tutor, aula, elemento, prioridad, descripcion)
@@ -166,27 +153,27 @@ with tab1:
 with tab2:
     st.subheader("📊 Histórico y Gestión de Incidencias")
     
-    # 1. Se define la variable password con el input del usuario
     password = st.text_input("Contraseña de Coordinador TDE", type="password")
     
-    # 2. SE COMPRUEBA DENTRO DEL 'WITH TAB2'
-    if password == "tde2026":  # Cambia esta clave si lo deseas
+    if password == "tde2026":
         df = cargar_incidencias_supabase()
         
         if df.empty:
             st.info("No hay incidencias registradas por el momento.")
         else:
-            # Métricas rápidas
-            col_m1, col_m2, col_m3 = st.columns(3)
-            col_m1.metric("Total registradas", len(df))
-            col_m2.metric("Pendientes", len(df[df["estado"] == "Pendiente"]))
-            col_m3.metric("Resueltas", len(df[df["estado"] == "Resuelta"]))
+            # 1. TARJETAS DE MÉTRICAS RÁPIDAS
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            col_m1.metric("Total Registradas", len(df))
+            col_m2.metric("🔴 Pendientes", len(df[df["estado"] == "Pendiente"]))
+            col_m3.metric("🟡 En Proceso", len(df[df["estado"] == "En proceso"]))
+            col_m4.metric("🟢 Resueltas", len(df[df["estado"] == "Resuelta"]))
             
             st.markdown("---")
             
-            # Gestión del estado
-            st.markdown("### 🛠️ Actualizar Estado de Incidencia")
+            # 2. SECCIÓN PARA CAMBIAR EL ESTADO DE UNA INCIDENCIA
+            st.markdown("### 🛠️ Actualizar Estado de una Incidencia")
             c_col1, c_col2, c_col3 = st.columns([1, 1, 1])
+            
             with c_col1:
                 incidencia_sel = st.selectbox("Seleccionar ID Incidencia", df["id"].tolist())
             with c_col2:
@@ -194,20 +181,38 @@ with tab2:
             with c_col3:
                 st.write("")
                 st.write("")
-                if st.button("Guardar Estado"):
+                if st.button("💾 Guardar Cambio"):
                     actualizar_estado_incidencia(incidencia_sel, nuevo_estado)
-                    st.success(f"Incidencia #{incidencia_sel} actualizada a '{nuevo_estado}'")
+                    st.success(f"¡Incidencia #{incidencia_sel} actualizada a '{nuevo_estado}'!")
                     st.rerun()
 
             st.markdown("---")
-            st.dataframe(df, use_container_width=True)
             
-            # Descargar archivo CSV
-            csv_data = df.to_csv(index=False).encode('utf-8')
+            # 3. FILTRO DE VISUALIZACIÓN
+            st.markdown("### 📋 Listado de Incidencias")
+            filtro_estado = st.radio(
+                "Filtrar por estado:",
+                ["Todas", "Pendientes", "En proceso", "Resueltas"],
+                horizontal=True
+            )
+            
+            if filtro_estado == "Pendientes":
+                df_filtrado = df[df["estado"] == "Pendiente"]
+            elif filtro_estado == "En proceso":
+                df_filtrado = df[df["estado"] == "En proceso"]
+            elif filtro_estado == "Resueltas":
+                df_filtrado = df[df["estado"] == "Resuelta"]
+            else:
+                df_filtrado = df
+
+            st.dataframe(df_filtrado, use_container_width=True)
+            
+            # Botón para descargar el reporte en CSV
+            csv_data = df_filtrado.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Descargar Reporte Completo (CSV/Excel)",
+                label="📥 Descargar Reporte Filtrado (CSV)",
                 data=csv_data,
-                file_name=f"incidencias_TDE_{datetime.date.today()}.csv",
+                file_name=f"incidencias_{filtro_estado}_{datetime.date.today()}.csv",
                 mime="text/csv",
             )
     elif password:
