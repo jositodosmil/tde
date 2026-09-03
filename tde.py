@@ -16,10 +16,57 @@ SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
 @st.cache_resource
-def init_supabase() -> Client:
+def init_supabase():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        st.error("❌ Faltan las credenciales SUPABASE_URL o SUPABASE_KEY en los secretos de Streamlit Cloud.")
+        st.stop()
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 supabase = init_supabase()
+
+# --- FUNCIONES DE BASE DE DATOS (SUPABASE) ---
+def guardar_incidencia_supabase(tutor, edificio, aula, elemento, tipo, prioridad, descripcion):
+    """Inserta una nueva incidencia en Supabase y retorna el ID asignado."""
+    fecha_actual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    
+    datos = {
+        "fecha_hora": fecha_actual,
+        "tutor": tutor,
+        "edificio": edificio,
+        "aula": aula,
+        "elemento": elemento,
+        "tipo": tipo,
+        "prioridad": prioridad,
+        "descripcion": descripcion,
+        "estado": "Pendiente"
+    }
+    
+    try:
+        respuesta = supabase.table("incidencias").insert(datos).execute()
+        if respuesta.data:
+            return respuesta.data[0]["id"]
+        else:
+            st.error("❌ La base de datos no devolvió respuesta al guardar.")
+            return None
+    except Exception as e:
+        st.error(f"❌ Error al conectar con Supabase: {e}")
+        return None
+
+def cargar_incidencias_supabase():
+    """Carga todas las incidencias de Supabase en un DataFrame de Pandas."""
+    try:
+        respuesta = supabase.table("incidencias").select("*").order("id", desc=True).execute()
+        return pd.DataFrame(respuesta.data)
+    except Exception as e:
+        st.error(f"❌ Error al cargar incidencias de Supabase: {e}")
+        return pd.DataFrame()
+
+def actualizar_estado_incidencia(incidencia_id, nuevo_estado):
+    """Actualiza el estado de una incidencia en Supabase."""
+    try:
+        supabase.table("incidencias").update({"estado": nuevo_estado}).eq("id", incidencia_id).execute()
+    except Exception as e:
+        st.error(f"❌ Error al actualizar la incidencia #{incidencia_id}: {e}")
 
 # --- CONFIGURACIÓN DE TELEGRAM ---
 TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
