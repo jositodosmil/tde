@@ -125,7 +125,7 @@ def actualizar_estado_incidencia(incidencia_id, nuevo_estado):
     supabase.table("incidencias").update({"estado": nuevo_estado}).eq("id", incidencia_id).execute()
 
 # --- INTERFAZ DE USUARIO ---
-st.title("💻 Centro CEIP - Incidencias TDE")
+st.title("💻 CEIP Virgen del Carmen (Alcaudete) - Incidencias TDE")
 st.caption("Punto de comunicación directa con el Coordinador de Transformación Digital Educativa.")
 
 tab1, tab2 = st.tabs(["📝 Reportar Incidencia", "⚙️ Panel Coordinación TDE"])
