@@ -4,6 +4,125 @@ import requests
 import streamlit as st
 from supabase import create_client, Client
 
+import io
+import datetime
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+def generar_pdf_incidencias(df):
+    """Genera un archivo PDF horizontal con las incidencias formateadas para el equipo directivo."""
+    buffer = io.BytesIO()
+    
+    # Documento en formato A4 Horizontal (Landscape) para dar cabida a todas las columnas
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=20,
+        leftMargin=20,
+        topMargin=20,
+        bottomMargin=20
+    )
+    
+    elementos = []
+    styles = getSampleStyleSheet()
+    
+    # --- ESTILOS PERSONALIZADOS ---
+    titulo_style = ParagraphStyle(
+        'TituloInforme',
+        parent=styles['Heading1'],
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor('#1E3A8A'),  # Azul corporativo
+        spaceAfter=6
+    )
+    
+    subtitulo_style = ParagraphStyle(
+        'SubtituloInforme',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#4B5563'),
+        spaceAfter=15
+    )
+    
+    celda_header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        fontName='Helvetica-Bold',
+        textColor=colors.white,
+        alignment=1  # Centrado
+    )
+    
+    celda_body_style = ParagraphStyle(
+        'BodyStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor('#1F2937')
+    )
+
+    # --- CABECERA Y RESUMEN EJECUTIVO ---
+    fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    elementos.append(Paragraph("Informe de Actuaciones e Incidencias TDE", titulo_style))
+    
+    total_incidencias = len(df)
+    pendientes = len(df[df['estado'] == 'Pendiente']) if 'estado' in df.columns else 0
+    resueltas = len(df[df['estado'] == 'Resuelta']) if 'estado' in df.columns else 0
+    
+    resumen_texto = f"<b>Fecha de generación:</b> {fecha_hoy} | <b>Total de incidencias:</b> {total_incidencias} | <b>Pendientes:</b> {pendientes} | <b>Resueltas:</b> {resueltas}"
+    elementos.append(Paragraph(resumen_texto, subtitulo_style))
+    elementos.append(Spacer(1, 10))
+    
+    # --- CONSTRUCCIÓN DE LA TABLA ---
+    # Columnas a mostrar en el informe
+    columnas_deseadas = ['id', 'fecha_hora', 'edificio', 'aula', 'elemento', 'tipo', 'prioridad', 'estado', 'descripcion']
+    headers_limpios = ['ID', 'Fecha', 'Edificio', 'Aula', 'Elemento', 'Tipo', 'Prioridad', 'Estado', 'Descripción']
+    
+    # Filtrar solo las columnas que existan en el DataFrame
+    cols_existentes = [c for c in columnas_deseadas if c in df.columns]
+    
+    # Fila de cabecera
+    data_tabla = [[Paragraph(h, celda_header_style) for h in headers_limpios]]
+    
+    # Filas de datos
+    for _, row in df.iterrows():
+        fila = []
+        for col in cols_existentes:
+            val = str(row[col]) if row[col] is not None else ""
+            fila.append(Paragraph(val, celda_body_style))
+        data_tabla.append(fila)
+
+    # Anchos de columna optimizados para A4 Horizontal (~780pt ancho utilizable)
+    col_widths = [30, 80, 60, 50, 80, 80, 65, 65, 270]
+
+    tabla = Table(data_tabla, colWidths=col_widths, repeatRows=1)
+    
+    # Estilo visual de la tabla (colores intercalados, bordes finos, cabecera azul)
+    estilo_tabla = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E3A8A')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ])
+    
+    # Añadir filas de fondo alternado (efecto cebra)
+    for i in range(1, len(data_tabla)):
+        if i % 2 == 0:
+            estilo_tabla.add('BACKGROUND', (0, i), (-1, i), colors.HexColor('#F9FAFB'))
+            
+    tabla.setStyle(estilo_tabla)
+    elementos.append(tabla)
+    
+    # Construir PDF
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
+
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="Gestión de Incidencias TDE",
@@ -261,3 +380,15 @@ with tab2:
             )
     elif password:
         st.error("Contraseña incorrecta.")
+
+            # 2. NUEVO: Descarga en PDF Presentable
+            with col2:
+                pdf_buffer = generar_pdf_incidencias(df_incidencias)
+                st.download_button(
+                    label="📕 Descargar Informe PDF Directiva",
+                    data=pdf_buffer,
+                    file_name=f"Informe_TDE_{datetime.date.today()}.pdf",
+                    mime="application/pdf"
+                )
+        else:
+            st.info("No hay incidencias registradas para generar el informe.")
