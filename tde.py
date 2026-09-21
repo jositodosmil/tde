@@ -122,7 +122,7 @@ def generar_pdf_incidencias(df):
     doc.build(elementos)
     buffer.seek(0)
     return buffer
-
+    
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="Gestión de Incidencias TDE",
@@ -370,25 +370,34 @@ with tab2:
 
             st.dataframe(df_filtrado, use_container_width=True)
             
-            # Botón para descargar el reporte en CSV
-            csv_data = df_filtrado.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Descargar Reporte Filtrado (CSV)",
-                data=csv_data,
-                file_name=f"incidencias_{filtro_estado}_{datetime.date.today()}.csv",
-                mime="text/csv",
-            )
-    elif password:
-        st.error("Contraseña incorrecta.")
+            # Cargar incidencias desde Supabase
+            df_incidencias = cargar_incidencias_supabase()
 
-            # 2. NUEVO: Descarga en PDF Presentable
-            with col2:
-                pdf_buffer = generar_pdf_incidencias(df_incidencias)
-                st.download_button(
-                    label="📕 Descargar Informe PDF Directiva",
-                    data=pdf_buffer,
-                    file_name=f"Informe_TDE_{datetime.date.today()}.pdf",
-                    mime="application/pdf"
-                )
-        else:
-            st.info("No hay incidencias registradas para generar el informe.")
+            if not df_incidencias.empty:
+                st.dataframe(df_incidencias, use_container_width=True)
+    
+                col1, col2 = st.columns(2)
+    
+                # 1. Descarga en CSV (mantener como alternativa)
+                with col1:
+                    csv_data = df_incidencias.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📄 Descargar como CSV",
+                        data=csv_data,
+                        file_name=f"incidencias_{datetime.date.today()}.csv",
+                        mime="text/csv"
+                    )
+        
+                # 2. NUEVO: Descarga en PDF Presentable
+                with col2:
+                    pdf_buffer = generar_pdf_incidencias(df_incidencias)
+                    st.download_button(
+                        label="📕 Descargar Informe PDF Directiva",
+                        data=pdf_buffer,
+                        file_name=f"Informe_TDE_{datetime.date.today()}.pdf",
+                        mime="application/pdf"
+                    )
+            else:
+                st.info("No hay incidencias registradas para generar el informe.")
+        
+            
