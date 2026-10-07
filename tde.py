@@ -263,7 +263,7 @@ with tab1:
             ])
             aula = st.selectbox("Aula / Espacio *", [
                 "3 años", "4 años", "5 años ",
-                "1º", "2º", "3º", "4º", "5º", "6ºA", "6ºB", "Aula PT", "Aula ZTS", "Aula STEAM", "Sala Profesores", "Biblioteca"
+                "1º", "2º", "3º", "4º", "5º", "6ºA", "6ºB", "Aula PT", "Aula ZTS", "Aula STEAM", "Sala Profesores", "Biblioteca", "Administración", "Dirección", "Jefatura de Estudios", "Secretaría"
             ])
 
         with col2:
